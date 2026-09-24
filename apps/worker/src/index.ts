@@ -1,4 +1,4 @@
-import { createDefaultRegistry } from "@carwatch/providers";
+import { closeBrowser, createDefaultRegistry } from "@carwatch/providers";
 import { cleanupOldProviderRuns } from "./jobs/cleanup-provider-runs";
 import { env } from "./env";
 import { startHeartbeat } from "./heartbeat";
@@ -49,6 +49,7 @@ async function main() {
     clearInterval(heartbeatInterval);
     await Promise.all(workers.map((w) => w.close()));
     await Promise.all(Object.values(queues).map((q) => q.close()));
+    await closeBrowser();
     connection.disconnect();
     process.exit(0);
   };

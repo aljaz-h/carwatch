@@ -1,6 +1,6 @@
 import { DEFAULT_RATE_LIMIT, type NormalizedListing, type RateLimitConfig } from "@carwatch/shared";
 import { ParserStructureError } from "../../errors";
-import { fetchText } from "../../http/fetch-with-retry";
+import { fetchTextViaBrowser } from "../../http/browser-fetch";
 import { RateLimiter } from "../../http/rate-limiter";
 import type { HealthCheckResult, Provider, RawListingPayload, SearchOptions, SearchResultItem } from "../../types";
 import { normalizeAvtoNetListing } from "./map-normalize";
@@ -25,7 +25,7 @@ export class AvtoNetProvider implements Provider {
     const maxPages = options.maxPages ?? 20;
     for (let page = 1; page <= maxPages; page += 1) {
       const url = `${BASE_URL}${SEARCH_PATH}?stran=${page}`;
-      const html = await fetchText(url, this.limiter, this.rateLimit);
+      const html = await fetchTextViaBrowser(url, this.limiter, this.rateLimit);
 
       if (page === 1 && !hasExpectedSearchStructure(html)) {
         throw new ParserStructureError(
@@ -43,7 +43,7 @@ export class AvtoNetProvider implements Provider {
 
   async getListing(providerListingId: string, hint?: { url?: string }): Promise<RawListingPayload<AvtoNetRawDetail>> {
     const url = hint?.url ?? `${BASE_URL}/Ads/details.asp?id=${providerListingId}`;
-    const html = await fetchText(url, this.limiter, this.rateLimit);
+    const html = await fetchTextViaBrowser(url, this.limiter, this.rateLimit);
     const data = parseDetailPage(html);
     return { providerListingId, url, fetchedAt: new Date().toISOString(), data };
   }
@@ -55,7 +55,7 @@ export class AvtoNetProvider implements Provider {
   async healthCheck(): Promise<HealthCheckResult> {
     const start = Date.now();
     try {
-      await fetchText(BASE_URL, this.limiter, { ...this.rateLimit, maxRetries: 0, timeoutMs: 8000 });
+      await fetchTextViaBrowser(BASE_URL, this.limiter, { ...this.rateLimit, maxRetries: 0, timeoutMs: 8000 });
       return { ok: true, latencyMs: Date.now() - start };
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err), latencyMs: Date.now() - start };

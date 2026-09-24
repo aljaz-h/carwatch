@@ -4,6 +4,7 @@ export * from "./registry";
 export * from "./default-registry";
 export * from "./http/rate-limiter";
 export * from "./http/fetch-with-retry";
+export * from "./http/browser-fetch";
 export { AvtoNetProvider } from "./providers/avto-net/index";
 export { DemoProvider } from "./providers/demo/index";
 export { hasExpectedSearchStructure } from "./providers/avto-net/parse-search";

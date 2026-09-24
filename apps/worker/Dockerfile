@@ -6,6 +6,12 @@ FROM node:22-slim AS base
 # means the pnpm binary root already downloaded during `deps` below is
 # reused at runtime — no permission error, no network fetch on startup.
 ENV COREPACK_HOME=/app/.corepack
+# Same reasoning as COREPACK_HOME above: the Avto.net provider drives a real
+# headless Chromium (see packages/providers/src/http/browser-fetch.ts)
+# instead of plain HTTP, since Avto.net blocks plain requests outright.
+# Installed once as root below, into a shared path the non-root `worker`
+# user can still read at runtime.
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/.playwright
 RUN corepack enable
 WORKDIR /app
 
@@ -17,6 +23,9 @@ COPY packages/providers/package.json packages/providers/package.json
 COPY packages/notifications/package.json packages/notifications/package.json
 COPY apps/worker/package.json apps/worker/package.json
 RUN pnpm install --frozen-lockfile --ignore-scripts
+# --with-deps also apt-installs the OS-level libraries Chromium needs
+# (fonts, libnss3, libatk, ...) — network + root required, hence here.
+RUN pnpm --filter @carwatch/providers exec playwright install --with-deps chromium
 
 FROM deps AS runner
 ENV NODE_ENV=production
@@ -40,9 +49,9 @@ COPY apps/worker apps/worker
 RUN pnpm --filter @carwatch/database generate
 
 # Hand the whole app directory over to the user CMD actually runs as: the
-# source just copied in, but also node_modules and the pnpm/corepack cache
-# populated as root above (during `deps` and the `generate` step) — `pnpm
-# exec` at runtime touches all three, not just the source.
+# source just copied in, but also node_modules, the pnpm/corepack cache, and
+# the Chromium install, all populated as root above — `pnpm exec` and the
+# Avto.net provider's browser both touch these at runtime, not just source.
 RUN chown -R worker:carwatch /app
 
 USER worker
