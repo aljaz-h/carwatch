@@ -258,7 +258,10 @@ cause.
 
 ## Local development (without Docker)
 
-Requires Node 22+, pnpm, a local PostgreSQL 16 and Redis.
+Requires Node 22+, a local PostgreSQL 16 and Redis, and Corepack enabled
+(`corepack enable`) so your `pnpm` resolves to the exact version this repo
+pins via `"packageManager"` in `package.json` — the same version Docker and
+any CI use, so lockfile/supply-chain behavior can't drift between them.
 
 ```bash
 pnpm install

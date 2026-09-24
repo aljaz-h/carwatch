@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "Self-hosted used-car listing aggregator and monitoring platform",
+  "packageManager": "pnpm@12.6.0",
   "engines": {
     "node": ">=22"
   },
@@ -22,13 +23,5 @@
   "devDependencies": {
     "typescript": "^5.6.3",
     "prettier": "^3.3.3"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@prisma/client",
-      "@prisma/engines",
-      "esbuild",
-      "prisma"
-    ]
   }
 }

@@ -1,3 +1,48 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# --- Supply-chain policy (pnpm 12+) ----------------------------------------
+# pnpm 12 rejects installing any lockfile entry for a package version
+# published more recently than `minimumReleaseAge` (a defense against a
+# just-published, compromised version landing in a frozen-lockfile install
+# before it's had time to be caught/yanked). This is active by default even
+# with no config at all, which is what caused
+# `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION` on caniuse-lite@1.0.30001812:
+# pnpm's implicit default cutoff is close to 24h, and that release landed
+# inside it. Pinning it explicitly here (rather than relying on pnpm's
+# implicit default, which is not documented as stable across releases)
+# keeps installs deterministic.
+#
+# In minutes. 1440 = 24 hours.
+minimumReleaseAge: 1440
+
+# Narrow, justified exceptions: both packages below are pure
+# auto-generated browser-compatibility data (no executable logic beyond
+# what any dependency carries), maintained by the Browserslist/web-platform
+# ecosystem, and are direct dependencies of next@16.3.6. They release
+# every few days, so a 24h global minimum would otherwise flag them on
+# most dependency bumps and make production installs fail intermittently
+# for reasons unrelated to this repo's own code.
+minimumReleaseAgeExclude:
+  - caniuse-lite
+  - baseline-browser-mapping
+
+# --- Build-script trust policy (pnpm 12+) ----------------------------------
+# Replaces the "pnpm.onlyBuiltDependencies" field in package.json, which
+# pnpm 12 no longer reads (see pnpm's own warning: "The pnpm field in
+# package.json is no longer read by pnpm"). Packages listed here are
+# allowed to run install/postinstall/prepare scripts. Docker and CI installs
+# in this repo always pass --ignore-scripts, so this only matters for local
+# development (`pnpm install` without that flag).
+#
+# msgpackr-extract (native binary accelerator for msgpackr, a transitive
+# dependency via ioredis) was flagged by pnpm on the first `pnpm install`
+# run under this policy and wasn't in the previous onlyBuiltDependencies
+# list; it's a standard, widely-used native addon, not new or unexpected.
+allowBuilds:
+  "@prisma/client": true
+  "@prisma/engines": true
+  esbuild: true
+  msgpackr-extract: true
+  prisma: true
