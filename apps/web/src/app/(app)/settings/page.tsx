@@ -6,6 +6,7 @@ import { ProvidersPanel } from "@/components/settings/providers-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { getProviderDiagnostics } from "@/lib/provider-diagnostics";
 
 interface GeneralSettings {
   siteName: string;
@@ -20,7 +21,7 @@ export default async function SettingsPage() {
   if (!user) redirect("/login");
 
   const [providers, channels, generalSetting] = await Promise.all([
-    prisma.provider.findMany({ orderBy: { name: "asc" } }),
+    getProviderDiagnostics(),
     prisma.notificationChannel.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" } }),
     prisma.appSetting.findUnique({ where: { key: "general" } }),
   ]);
@@ -43,7 +44,7 @@ export default async function SettingsPage() {
         </TabsList>
 
         <TabsContent value="providers">
-          <ProvidersPanel providers={providers} />
+          <ProvidersPanel initial={providers} />
         </TabsContent>
 
         <TabsContent value="notifications">

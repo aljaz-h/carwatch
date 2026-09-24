@@ -55,3 +55,29 @@ export type AlertType = (typeof ALERT_TYPES)[number];
 
 export const ALERT_CHANNEL_TYPES = ["DISCORD", "EMAIL", "TELEGRAM", "WEBPUSH", "NTFY", "GOTIFY"] as const;
 export type AlertChannelType = (typeof ALERT_CHANNEL_TYPES)[number];
+
+export const SCRAPE_RUN_STATUSES = ["RUNNING", "SUCCESS", "FAILED", "PARTIAL", "CANCELLED"] as const;
+export type ScrapeRunStatus = (typeof SCRAPE_RUN_STATUSES)[number];
+
+export const SCRAPE_RUN_TRIGGERS = ["SCHEDULED", "MANUAL"] as const;
+export type ScrapeRunTrigger = (typeof SCRAPE_RUN_TRIGGERS)[number];
+
+export const PROVIDER_ERROR_TYPES = [
+  "DNS_FAILURE",
+  "CONNECTION_TIMEOUT",
+  "REQUEST_TIMEOUT",
+  "HTTP_FORBIDDEN",
+  "HTTP_RATE_LIMITED",
+  "HTTP_ERROR",
+  "PARSER_STRUCTURE_MISMATCH",
+  "PARSER_ANOMALY",
+  "UNEXPECTED_RESPONSE",
+  "DATABASE_ERROR",
+  "NORMALIZATION_ERROR",
+  "INTERNAL_ERROR",
+] as const;
+export type ProviderErrorType = (typeof PROVIDER_ERROR_TYPES)[number];
+
+/** Provider health state as shown in the UI — derived, not stored. */
+export const PROVIDER_HEALTH_STATES = ["HEALTHY", "WARNING", "ERROR", "DISABLED", "NEVER_RUN"] as const;
+export type ProviderHealthState = (typeof PROVIDER_HEALTH_STATES)[number];

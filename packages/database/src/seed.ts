@@ -1,111 +1,7 @@
-import { FEATURE_CATALOG, hashPassword } from "@carwatch/shared";
+import { hashPassword } from "@carwatch/shared";
 import { prisma } from "./client";
+import { daysAgo, seedAppSettings, seedFeatures, seedProviders } from "./seed-helpers";
 import { SEED_VEHICLES, seedVehicleImages } from "./seed-data";
-
-function daysAgo(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d;
-}
-
-const PROVIDERS = [
-  {
-    key: "avto_net",
-    name: "Avto.net",
-    baseUrl: "https://www.avto.net",
-    scrapeIntervalMinutes: 45,
-    status: "HEALTHY" as const,
-    config: { rateLimit: { minDelayMs: 1200, jitterMs: 1500, concurrency: 2 } },
-  },
-  {
-    key: "doberavto",
-    name: "DoberAvto",
-    baseUrl: "https://www.doberavto.si",
-    scrapeIntervalMinutes: 60,
-    status: "HEALTHY" as const,
-    config: { rateLimit: { minDelayMs: 1500, jitterMs: 1500, concurrency: 2 } },
-  },
-  {
-    key: "bolha",
-    name: "Bolha",
-    baseUrl: "https://www.bolha.com",
-    scrapeIntervalMinutes: 60,
-    status: "HEALTHY" as const,
-    config: { rateLimit: { minDelayMs: 1500, jitterMs: 2000, concurrency: 2 } },
-  },
-  {
-    key: "mobile_de",
-    name: "mobile.de",
-    baseUrl: "https://www.mobile.de",
-    scrapeIntervalMinutes: 90,
-    status: "DEGRADED" as const,
-    config: { rateLimit: { minDelayMs: 2000, jitterMs: 2000, concurrency: 1 } },
-  },
-  {
-    key: "demo",
-    name: "Demo Marketplace",
-    baseUrl: undefined,
-    scrapeIntervalMinutes: 30,
-    status: "HEALTHY" as const,
-    config: { rateLimit: { minDelayMs: 50, jitterMs: 50, concurrency: 4 }, note: "In-memory, network-free provider for local development." },
-  },
-];
-
-async function seedProviders() {
-  const providers = new Map<string, string>();
-  for (const p of PROVIDERS) {
-    const created = await prisma.provider.upsert({
-      where: { key: p.key },
-      create: {
-        key: p.key,
-        name: p.name,
-        baseUrl: p.baseUrl,
-        scrapeIntervalMinutes: p.scrapeIntervalMinutes,
-        status: p.status,
-        config: p.config,
-        lastSuccessAt: p.status === "DEGRADED" ? daysAgo(2) : daysAgo(0),
-        lastErrorAt: p.status === "DEGRADED" ? daysAgo(1) : null,
-        lastError: p.status === "DEGRADED" ? "Timeout after 15000ms fetching search results page 3" : null,
-      },
-      update: {},
-    });
-    providers.set(p.key, created.id);
-
-    // A handful of historical scrape runs per provider for diagnostics.
-    for (let i = 3; i >= 0; i--) {
-      const started = daysAgo(i * (p.scrapeIntervalMinutes / 60 / 24) + i);
-      const discovered = 40 + Math.floor(Math.random() * 60);
-      const isFailedRun = p.status === "DEGRADED" && i === 0;
-      await prisma.providerScrapeRun.create({
-        data: {
-          providerId: created.id,
-          startedAt: started,
-          finishedAt: isFailedRun ? undefined : new Date(started.getTime() + 45_000 + Math.random() * 30_000),
-          status: isFailedRun ? "FAILED" : "SUCCESS",
-          listingsDiscovered: isFailedRun ? 0 : discovered,
-          listingsNew: isFailedRun ? 0 : Math.floor(discovered * 0.15),
-          listingsUpdated: isFailedRun ? 0 : Math.floor(discovered * 0.35),
-          listingsUnchanged: isFailedRun ? 0 : Math.floor(discovered * 0.5),
-          listingsRemoved: isFailedRun ? 0 : Math.floor(Math.random() * 4),
-          errorsCount: isFailedRun ? 1 : 0,
-          errorMessage: isFailedRun ? "Timeout after 15000ms fetching search results page 3" : null,
-          durationMs: isFailedRun ? 15000 : 45000 + Math.floor(Math.random() * 30000),
-        },
-      });
-    }
-  }
-  return providers;
-}
-
-async function seedFeatures() {
-  for (const f of FEATURE_CATALOG) {
-    await prisma.feature.upsert({
-      where: { key: f.key },
-      create: { key: f.key, label: f.label, category: f.category },
-      update: { label: f.label, category: f.category },
-    });
-  }
-}
 
 async function seedVehiclesAndListings(providerIds: Map<string, string>) {
   const listingIdBySlug = new Map<string, string>();
@@ -416,21 +312,6 @@ async function seedSavedSearchAndAlerts(userId: string, listingIdBySlug: Map<str
       },
     });
   }
-}
-
-async function seedAppSettings() {
-  await prisma.appSetting.upsert({
-    where: { key: "general" },
-    create: {
-      key: "general",
-      value: {
-        siteName: "CarWatch",
-        defaultCurrency: "EUR",
-        timezone: "Europe/Ljubljana",
-      },
-    },
-    update: {},
-  });
 }
 
 async function main() {

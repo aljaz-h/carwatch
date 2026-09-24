@@ -1,10 +1,14 @@
 import { createDefaultRegistry } from "@carwatch/providers";
+import { cleanupOldProviderRuns } from "./jobs/cleanup-provider-runs";
 import { env } from "./env";
+import { startHeartbeat } from "./heartbeat";
 import { logger } from "./logger";
 import { createQueues } from "./queues";
 import { createRedisConnection } from "./redis";
 import { reconcileProviderSchedules } from "./scheduler";
 import { startWorkers } from "./workers";
+
+const CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000; // every 6 hours
 
 async function main() {
   logger.info("CarWatch worker starting", { nodeEnv: env.nodeEnv });
@@ -14,6 +18,7 @@ async function main() {
   const registry = createDefaultRegistry();
 
   const workers = startWorkers(connection, queues, registry);
+  const heartbeatInterval = startHeartbeat();
 
   await reconcileProviderSchedules(queues);
   const reconcileInterval = setInterval(
@@ -23,9 +28,15 @@ async function main() {
     env.schedulerReconcileMinutes * 60_000,
   );
 
+  cleanupOldProviderRuns().catch((err) => logger.error("Provider run cleanup failed", { error: err.message }));
+  const cleanupInterval = setInterval(() => {
+    cleanupOldProviderRuns().catch((err) => logger.error("Provider run cleanup failed", { error: err.message }));
+  }, CLEANUP_INTERVAL_MS);
+
   logger.info("CarWatch worker ready", {
     providers: registry.list().map((p) => p.key),
     queues: ["scrape", "match", "alert"],
+    providerRunRetentionDays: env.providerRunRetentionDays,
   });
 
   let shuttingDown = false;
@@ -34,6 +45,8 @@ async function main() {
     shuttingDown = true;
     logger.info("Shutting down worker", { signal });
     clearInterval(reconcileInterval);
+    clearInterval(cleanupInterval);
+    clearInterval(heartbeatInterval);
     await Promise.all(workers.map((w) => w.close()));
     await Promise.all(Object.values(queues).map((q) => q.close()));
     connection.disconnect();

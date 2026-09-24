@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { normalizeAvtoNetListing } from "../src/providers/avto-net/map-normalize.js";
 import { parseDetailPage } from "../src/providers/avto-net/parse-detail.js";
-import { hasNextSearchPage, parseSearchPage } from "../src/providers/avto-net/parse-search.js";
+import { hasExpectedSearchStructure, hasNextSearchPage, parseSearchPage } from "../src/providers/avto-net/parse-search.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = join(__dirname, "fixtures", "avto-net");
@@ -31,6 +31,21 @@ describe("avto.net parseSearchPage", () => {
     const html = loadFixture("search-page.html");
     expect(hasNextSearchPage(html, 1)).toBe(true);
     expect(hasNextSearchPage(html, 2)).toBe(false);
+  });
+});
+
+describe("avto.net hasExpectedSearchStructure (parser-health guard)", () => {
+  it("is true for a normal results page", () => {
+    expect(hasExpectedSearchStructure(loadFixture("search-page.html"))).toBe(true);
+  });
+
+  it("is true for a page that legitimately matched zero listings (container present, empty)", () => {
+    expect(hasExpectedSearchStructure(loadFixture("search-page-empty.html"))).toBe(true);
+    expect(parseSearchPage(loadFixture("search-page-empty.html"))).toHaveLength(0);
+  });
+
+  it("is false when the results container is missing entirely (site markup changed)", () => {
+    expect(hasExpectedSearchStructure(loadFixture("search-page-changed-markup.html"))).toBe(false);
   });
 });
 

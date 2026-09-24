@@ -42,3 +42,15 @@ export function hasNextSearchPage(html: string, currentPage: number): boolean {
   });
   return hasNext;
 }
+
+/**
+ * True when the page still has the results container CarWatch's parser
+ * relies on, whether or not it currently holds any rows. A page that lacks
+ * this container entirely (while still returning HTTP 200) is a strong
+ * signal that Avto.net changed its markup, as opposed to a search that
+ * legitimately matched zero listings.
+ */
+export function hasExpectedSearchStructure(html: string): boolean {
+  const $ = cheerio.load(html);
+  return $(".GO-Results").length > 0;
+}

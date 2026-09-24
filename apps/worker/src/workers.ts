@@ -1,3 +1,4 @@
+import { prisma } from "@carwatch/database";
 import type { ProviderRegistry } from "@carwatch/providers";
 import { Worker, type Job } from "bullmq";
 import { env } from "./env";
@@ -12,7 +13,7 @@ export function startWorkers(connection: RedisConnection, queues: Queues, regist
   const scrapeWorker = new Worker<ScrapeJobData>(
     QUEUE_NAMES.scrape,
     async (job: Job<ScrapeJobData>) => {
-      await processScrapeJob(queues, registry, job.data);
+      await processScrapeJob(queues, registry, job);
     },
     { connection, concurrency: env.scrapeConcurrency },
   );
@@ -45,6 +46,28 @@ export function startWorkers(connection: RedisConnection, queues: Queues, regist
       logger.error("Worker error", { queue: worker.name, error: err.message });
     });
   }
+
+  // Cross-run bookkeeping for the "consecutive failures" counter shown in the
+  // provider diagnostics UI. A single BullMQ job can fail and be retried
+  // several times (attemptsMade < attempts) before either succeeding or
+  // being given up on for good (attemptsMade === attempts) — only the final,
+  // exhausted failure should count as "this scheduled/manual run failed".
+  scrapeWorker.on("failed", (job) => {
+    if (!job) return;
+    const attempts = job.opts.attempts ?? 1;
+    const isFinalAttempt = job.attemptsMade >= attempts;
+    if (!isFinalAttempt) {
+      logger.info("Provider scrape attempt failed, will retry", {
+        providerKey: job.data.providerKey,
+        attempt: job.attemptsMade,
+        maxAttempts: attempts,
+      });
+      return;
+    }
+    prisma.provider
+      .update({ where: { key: job.data.providerKey }, data: { consecutiveFailures: { increment: 1 } } })
+      .catch((err) => logger.error("Failed to bump consecutiveFailures", { error: err instanceof Error ? err.message : String(err) }));
+  });
 
   return workers;
 }

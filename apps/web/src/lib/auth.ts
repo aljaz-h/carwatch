@@ -29,6 +29,12 @@ export async function destroySessionByToken(token: string): Promise<void> {
   await prisma.session.deleteMany({ where: { tokenHash: hashSessionToken(token) } });
 }
 
+/** True once at least one account exists. Drives the first-run setup redirect. */
+export async function hasAnyUser(): Promise<boolean> {
+  const count = await prisma.user.count();
+  return count > 0;
+}
+
 export async function getCurrentUser(): Promise<User | null> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;

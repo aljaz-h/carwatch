@@ -82,6 +82,31 @@ enum ScrapeRunStatus {
   SUCCESS
   FAILED
   PARTIAL
+  CANCELLED
+}
+
+/// How a scrape run was triggered.
+enum ScrapeRunTrigger {
+  SCHEDULED
+  MANUAL
+}
+
+/// Coarse classification of what went wrong during a scrape run, used to pick
+/// a user-friendly message and to decide whether a failure is worth
+/// surfacing prominently (e.g. HTTP_403 vs a one-off timeout).
+enum ProviderErrorType {
+  DNS_FAILURE
+  CONNECTION_TIMEOUT
+  REQUEST_TIMEOUT
+  HTTP_FORBIDDEN
+  HTTP_RATE_LIMITED
+  HTTP_ERROR
+  PARSER_STRUCTURE_MISMATCH
+  PARSER_ANOMALY
+  UNEXPECTED_RESPONSE
+  DATABASE_ERROR
+  NORMALIZATION_ERROR
+  INTERNAL_ERROR
 }
 
 enum DuplicateMatchStatus {
@@ -232,8 +257,13 @@ model Provider {
   config               Json            @default("{}")
   status               ProviderStatus  @default(HEALTHY)
   lastSuccessAt        DateTime?
+  lastAttemptAt        DateTime?
   lastErrorAt          DateTime?
   lastError            String?
+  /// Number of scrape runs that failed in a row (after exhausting their own
+  /// retries), reset to 0 on the next successful run. Distinct from a single
+  /// run's own BullMQ retry attempts.
+  consecutiveFailures  Int             @default(0)
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 
@@ -244,23 +274,44 @@ model Provider {
 }
 
 model ProviderScrapeRun {
-  id                 String          @id @default(cuid())
+  id                 String           @id @default(cuid())
   providerId         String
-  startedAt          DateTime        @default(now())
+  startedAt          DateTime         @default(now())
   finishedAt         DateTime?
-  status             ScrapeRunStatus @default(RUNNING)
-  listingsDiscovered Int             @default(0)
-  listingsNew        Int             @default(0)
-  listingsUpdated    Int             @default(0)
-  listingsUnchanged  Int             @default(0)
-  listingsRemoved    Int             @default(0)
-  errorsCount        Int             @default(0)
+  status             ScrapeRunStatus  @default(RUNNING)
+  trigger            ScrapeRunTrigger @default(SCHEDULED)
+  listingsDiscovered Int              @default(0)
+  listingsNew        Int              @default(0)
+  listingsUpdated    Int              @default(0)
+  listingsUnchanged  Int              @default(0)
+  listingsRemoved    Int              @default(0)
+  errorsCount        Int              @default(0)
+
+  /// User-friendly summary shown by default (e.g. "Provider response could
+  /// not be parsed."). Technical details live in `errorDetail`.
   errorMessage       String?
-  durationMs         Int?
+  errorType          ProviderErrorType?
+  /// Short technical detail for the collapsible "advanced" section (raw
+  /// exception message, truncated). Never a full stack trace.
+  errorDetail        String?
+  httpStatus         Int?
+  /// Attempt number for this specific execution (BullMQ's job.attemptsMade).
+  retryCount         Int              @default(0)
+  /// True when the run completed without a hard error but the result looks
+  /// off (e.g. far fewer listings than usual) — the marketplace may have
+  /// changed its HTML.
+  isSuspicious       Boolean          @default(false)
+  /// BullMQ job id, for correlating with live queue state.
+  jobId              String?
+  /// Small bounded array of {ts, level, message} events for this run.
+  logs               Json?
+
+  durationMs Int?
 
   provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
   @@index([providerId, startedAt])
+  @@index([providerId, status])
   @@map("provider_scrape_runs")
 }
 

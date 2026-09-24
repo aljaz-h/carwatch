@@ -13,16 +13,68 @@ async function requireUser() {
   return user;
 }
 
+const MIN_SCRAPE_INTERVAL_MINUTES = 5;
+const MAX_SCRAPE_INTERVAL_MINUTES = 24 * 60;
+
 export async function toggleProviderAction(providerId: string, isEnabled: boolean) {
   await requireUser();
   await prisma.provider.update({ where: { id: providerId }, data: { isEnabled } });
   revalidatePath("/settings");
 }
 
-export async function updateProviderIntervalAction(providerId: string, scrapeIntervalMinutes: number) {
+export async function updateProviderIntervalAction(providerId: string, scrapeIntervalMinutes: number): Promise<{ ok: boolean; error?: string }> {
   await requireUser();
-  await prisma.provider.update({ where: { id: providerId }, data: { scrapeIntervalMinutes } });
+  if (!Number.isFinite(scrapeIntervalMinutes) || scrapeIntervalMinutes < MIN_SCRAPE_INTERVAL_MINUTES) {
+    return { ok: false, error: `Scrape interval must be at least ${MIN_SCRAPE_INTERVAL_MINUTES} minutes — scraping any faster risks getting blocked.` };
+  }
+  if (scrapeIntervalMinutes > MAX_SCRAPE_INTERVAL_MINUTES) {
+    return { ok: false, error: "Scrape interval can't be more than 24 hours." };
+  }
+  await prisma.provider.update({ where: { id: providerId }, data: { scrapeIntervalMinutes: Math.round(scrapeIntervalMinutes) } });
   revalidatePath("/settings");
+  return { ok: true };
+}
+
+export interface ProviderRateLimitInput {
+  minDelayMs: number;
+  jitterMs: number;
+  concurrency: number;
+  maxRetries: number;
+  timeoutMs: number;
+}
+
+function validateRateLimit(input: ProviderRateLimitInput): string | null {
+  if (!Number.isFinite(input.minDelayMs) || input.minDelayMs < 200 || input.minDelayMs > 60_000) {
+    return "Delay between requests must be between 200ms and 60,000ms.";
+  }
+  if (!Number.isFinite(input.jitterMs) || input.jitterMs < 0 || input.jitterMs > 60_000) {
+    return "Jitter must be between 0ms and 60,000ms.";
+  }
+  if (!Number.isInteger(input.concurrency) || input.concurrency < 1 || input.concurrency > 10) {
+    return "Concurrency must be between 1 and 10.";
+  }
+  if (!Number.isInteger(input.maxRetries) || input.maxRetries < 0 || input.maxRetries > 10) {
+    return "Retry count must be between 0 and 10.";
+  }
+  if (!Number.isFinite(input.timeoutMs) || input.timeoutMs < 2000 || input.timeoutMs > 120_000) {
+    return "Request timeout must be between 2,000ms and 120,000ms.";
+  }
+  return null;
+}
+
+export async function updateProviderRateLimitAction(providerId: string, input: ProviderRateLimitInput): Promise<{ ok: boolean; error?: string }> {
+  await requireUser();
+  const validationError = validateRateLimit(input);
+  if (validationError) return { ok: false, error: validationError };
+
+  const provider = await prisma.provider.findUniqueOrThrow({ where: { id: providerId } });
+  const existingConfig = (provider.config as Record<string, unknown>) ?? {};
+  await prisma.provider.update({
+    where: { id: providerId },
+    data: { config: { ...existingConfig, rateLimit: input } as never },
+  });
+  revalidatePath("/settings");
+  return { ok: true };
 }
 
 export async function createNotificationChannelAction(input: { type: "DISCORD" | "EMAIL"; label: string; config: Record<string, string> }) {

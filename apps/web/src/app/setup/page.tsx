@@ -1,12 +1,12 @@
 import { Car } from "lucide-react";
 import { redirect } from "next/navigation";
-import { getCurrentUser, hasAnyUser } from "@/lib/auth";
-import { LoginForm } from "./login-form";
+import { hasAnyUser } from "@/lib/auth";
+import { SetupForm } from "./setup-form";
 
-export default async function LoginPage() {
-  const user = await getCurrentUser();
-  if (user) redirect("/dashboard");
-  if (!(await hasAnyUser())) redirect("/setup");
+export default async function SetupPage() {
+  // Once an account exists, this route is effectively disabled — it always
+  // bounces to /login, so it can never be used to create a second admin.
+  if (await hasAnyUser()) redirect("/login");
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-base px-4">
@@ -21,16 +21,16 @@ export default async function LoginPage() {
             <Car className="h-5 w-5" />
           </span>
           <div>
-            <h1 className="text-lg font-semibold text-fg">CarWatch</h1>
-            <p className="text-sm text-fg-muted">Sign in to your listing monitor</p>
+            <h1 className="text-lg font-semibold text-fg">Welcome to CarWatch</h1>
+            <p className="text-sm text-fg-muted">Create the administrator account to get started</p>
           </div>
         </div>
 
         <div className="rounded-xl border border-border bg-surface p-6 shadow-xl shadow-black/30">
-          <LoginForm />
+          <SetupForm />
         </div>
 
-        <p className="mt-6 text-center text-xs text-fg-subtle">Self-hosted &middot; accounts are created by an administrator</p>
+        <p className="mt-6 text-center text-xs text-fg-subtle">This account will have full access to CarWatch — you can add more later.</p>
       </div>
     </div>
   );

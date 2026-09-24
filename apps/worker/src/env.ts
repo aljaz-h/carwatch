@@ -13,4 +13,5 @@ export const env = {
   alertConcurrency: Number.parseInt(process.env.ALERT_CONCURRENCY ?? "5", 10),
   schedulerReconcileMinutes: Number.parseInt(process.env.SCHEDULER_RECONCILE_MINUTES ?? "5", 10),
   webBaseUrl: process.env.WEB_BASE_URL ?? "http://localhost:3000",
+  providerRunRetentionDays: Number.parseInt(process.env.PROVIDER_RUN_RETENTION_DAYS ?? "30", 10),
 };

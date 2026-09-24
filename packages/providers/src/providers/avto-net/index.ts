@@ -1,10 +1,11 @@
 import { DEFAULT_RATE_LIMIT, type NormalizedListing, type RateLimitConfig } from "@carwatch/shared";
+import { ParserStructureError } from "../../errors";
 import { fetchText } from "../../http/fetch-with-retry";
 import { RateLimiter } from "../../http/rate-limiter";
 import type { HealthCheckResult, Provider, RawListingPayload, SearchOptions, SearchResultItem } from "../../types";
 import { normalizeAvtoNetListing } from "./map-normalize";
 import { parseDetailPage, type AvtoNetRawDetail } from "./parse-detail";
-import { hasNextSearchPage, parseSearchPage } from "./parse-search";
+import { hasExpectedSearchStructure, hasNextSearchPage, parseSearchPage } from "./parse-search";
 
 const BASE_URL = "https://www.avto.net";
 const SEARCH_PATH = "/Ads/results.asp";
@@ -23,7 +24,17 @@ export class AvtoNetProvider implements Provider {
   async *searchListings(options: SearchOptions = {}): AsyncGenerator<SearchResultItem> {
     const maxPages = options.maxPages ?? 20;
     for (let page = 1; page <= maxPages; page += 1) {
-      const html = await fetchText(`${BASE_URL}${SEARCH_PATH}?stran=${page}`, this.limiter, this.rateLimit);
+      const url = `${BASE_URL}${SEARCH_PATH}?stran=${page}`;
+      const html = await fetchText(url, this.limiter, this.rateLimit);
+
+      if (page === 1 && !hasExpectedSearchStructure(html)) {
+        throw new ParserStructureError(
+          "Avto.net search results page did not contain the expected results container.",
+          ".GO-Results",
+          url,
+        );
+      }
+
       const items = parseSearchPage(html);
       for (const item of items) yield item;
       if (items.length === 0 || !hasNextSearchPage(html, page)) break;
