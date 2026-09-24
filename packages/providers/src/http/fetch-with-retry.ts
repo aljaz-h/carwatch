@@ -42,8 +42,20 @@ export async function fetchText(
           const response = await fetch(url, {
             signal: controller.signal,
             headers: {
-              "User-Agent": "CarWatchBot/0.1 (+https://github.com/carwatch; self-hosted listing monitor)",
-              Accept: "text/html,application/xhtml+xml",
+              // A self-identifying bot User-Agent is an easy, free signal for
+              // anti-bot filters to reject on sight. Sending headers that
+              // resemble an ordinary browser request doesn't defeat
+              // fingerprint- or IP-reputation-based blocking, but it does
+              // rule out the cheapest, most common rejection reason.
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+              Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+              "Accept-Language": "sl-SI,sl;q=0.9,en-US;q=0.8,en;q=0.7",
+              "Upgrade-Insecure-Requests": "1",
+              "Sec-Fetch-Dest": "document",
+              "Sec-Fetch-Mode": "navigate",
+              "Sec-Fetch-Site": "none",
+              "Sec-Fetch-User": "?1",
               ...options.headers,
             },
           });
