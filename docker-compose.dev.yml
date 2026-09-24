@@ -1,0 +1,31 @@
+# Local development override: builds CarWatch from source instead of
+# pulling prebuilt GHCR images. Use both files together:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# Everything else — environment variables, health checks, volumes,
+# dependencies, networking — is inherited from docker-compose.yml. This
+# file only swaps `image:` for `build:` on the three services CarWatch
+# actually builds, so there is exactly one place normal service
+# configuration lives and the two files can't drift apart.
+#
+# This is for exercising the Docker path itself. For day-to-day
+# development (fast rebuilds, hot reload), running `pnpm dev:web` /
+# `pnpm dev:worker` directly against a local Postgres/Redis is faster —
+# see the README's "Local development" section.
+
+services:
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile

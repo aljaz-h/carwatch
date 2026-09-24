@@ -1,7 +1,12 @@
-.PHONY: up down restart logs status update backup restore secrets install
+.PHONY: up down restart logs status update backup restore secrets install pull dev dev-down
 
+# Production (default): pull prebuilt GHCR images, no local build.
 up:
-	docker compose up -d --build
+	docker compose pull
+	docker compose up -d
+
+pull:
+	docker compose pull
 
 down:
 	docker compose down
@@ -17,7 +22,8 @@ status:
 
 update:
 	git pull
-	docker compose up -d --build
+	docker compose pull
+	docker compose up -d
 
 backup:
 	./scripts/backup.sh
@@ -30,3 +36,11 @@ secrets:
 
 install:
 	./scripts/install.sh
+
+# Development: build CarWatch from source instead of pulling from GHCR.
+# See docker-compose.dev.yml.
+dev:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+dev-down:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml down

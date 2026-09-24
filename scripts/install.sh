@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # One-shot helper that gets CarWatch running on a fresh VPS: checks
-# prerequisites, prepares .env, generates secrets, and starts the stack.
-# It never installs Docker itself and never touches the firewall — see the
-# README if you need to do either of those.
+# prerequisites, prepares .env, generates secrets, then pulls the prebuilt
+# CarWatch images from GHCR and starts the stack — nothing is compiled on
+# this machine. It never installs Docker itself and never touches the
+# firewall — see the README if you need to do either of those.
 #
 # Usage: ./scripts/install.sh
 set -euo pipefail
@@ -52,8 +53,12 @@ fi
 ./scripts/generate-secrets.sh
 
 echo
-echo "Building and starting the CarWatch stack (this can take a few minutes on first run) ..."
-docker compose up -d --build
+echo "Pulling prebuilt CarWatch images from ghcr.io (no build, no Node.js needed) ..."
+docker compose pull
+
+echo
+echo "Starting the CarWatch stack ..."
+docker compose up -d
 
 echo
 echo "Waiting for the web app to become healthy ..."

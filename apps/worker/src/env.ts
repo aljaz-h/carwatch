@@ -14,4 +14,9 @@ export const env = {
   schedulerReconcileMinutes: Number.parseInt(process.env.SCHEDULER_RECONCILE_MINUTES ?? "5", 10),
   webBaseUrl: process.env.WEB_BASE_URL ?? "http://localhost:3000",
   providerRunRetentionDays: Number.parseInt(process.env.PROVIDER_RUN_RETENTION_DAYS ?? "30", 10),
+  // Baked into the production image at build time from the GHCR-publishing
+  // workflow (see the `runner` stage in apps/worker/Dockerfile). Unset in
+  // local dev, where these fall back to values that make that obvious.
+  version: process.env.CARWATCH_VERSION ?? "development",
+  gitSha: process.env.CARWATCH_GIT_SHA ?? "unknown",
 };

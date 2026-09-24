@@ -10,16 +10,21 @@ listings coming back on the market.
 
 Requires a VPS or machine running Ubuntu 22.04+/24.04+ or Debian 12+ with
 [Docker Engine and the Docker Compose plugin](https://docs.docker.com/engine/install/)
-installed. Nothing else — no Node, pnpm, Postgres, or Redis install required.
+installed. Nothing else — **no Node.js, pnpm, Next.js, or TypeScript build ever
+runs on this machine.** CarWatch's images are built once by GitHub Actions and
+published to GHCR (`ghcr.io/aljaz-h/carwatch-web`, `ghcr.io/aljaz-h/carwatch-worker`);
+the VPS only downloads and runs them.
 
 ```bash
-git clone https://github.com/<your-fork>/carwatch.git
+git clone https://github.com/aljaz-h/carwatch.git
 cd carwatch
 
 cp .env.example .env
 ./scripts/generate-secrets.sh   # fills in POSTGRES_PASSWORD; see below for the manual equivalent
+nano .env                       # review/adjust anything else you need
 
-docker compose up -d --build
+docker compose pull             # download the prebuilt web/worker images
+docker compose up -d
 
 docker compose ps               # everything should show "healthy" within a minute or two
 ```
@@ -29,14 +34,26 @@ machine). The first time you open it you'll land on a one-time **setup screen** 
 create the administrator account — CarWatch ships with no default admin/admin
 credentials. Once that account exists, the setup screen is disabled.
 
+Once logged in, **Settings → General → About** shows the exact version and
+commit currently running (also available as JSON from `GET /api/health`),
+and **Settings → Providers** is CarWatch's own diagnostics page — both are
+useful for confirming an update actually took effect.
+
 Prefer to generate the secret yourself instead of running the script?
 
 ```bash
 openssl rand -hex 32   # paste the output as POSTGRES_PASSWORD in .env
 ```
 
+> **First-time GHCR pull fails with "denied" or "unauthorized"?** The GHCR
+> packages need to be flipped to public visibility once, after the first
+> publish — see [Image visibility](#image-visibility) below. This is a
+> one-time step for the repository owner, not something every installer needs
+> to do.
+
 See [Reverse proxy & HTTPS](#reverse-proxy--https) once you're ready to put CarWatch
-behind a real domain.
+behind a real domain, or [Building from source](#building-from-source-development)
+if you're developing CarWatch itself rather than deploying it.
 
 ## Architecture
 
@@ -115,6 +132,43 @@ technical error type/HTTP status/job id), a manual "Run now" trigger, and a
 filterable run-history log. It polls for updates every few seconds while
 you're on the page — refresh isn't required.
 
+## Image visibility
+
+CarWatch's images are built and published automatically by
+[`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) —
+every push to `main` and every version tag produces a new
+`ghcr.io/aljaz-h/carwatch-web` and `ghcr.io/aljaz-h/carwatch-worker` image, using
+only the repository's built-in `GITHUB_TOKEN` (no manually created registry
+credentials are stored anywhere).
+
+By default, a repository's GHCR packages are **private** the first time they're
+published, even for a public repository — GitHub does not make them public
+automatically. So `docker compose pull` works without logging in only after
+someone with admin access on the repository does this once, per package
+(`carwatch-web` and `carwatch-worker`):
+
+1. On GitHub, go to the repository → **Packages** (right sidebar), open the
+   package.
+2. **Package settings** → **Change visibility** → **Public**.
+
+This is a one-time step for whoever owns the repository, not something every
+person deploying CarWatch has to do — once both packages are public,
+`docker compose pull` works for anyone, anonymously, forever after.
+
+### Releasing a new version (maintainers)
+
+```bash
+git tag v0.3.0
+git push origin v0.3.0
+```
+
+That's the whole release process. The tag push triggers
+`docker-publish.yml`, which validates the repository (install, typecheck,
+test, build — a failure here stops everything below), then builds and
+publishes both images tagged `0.3.0`, `0.3`, `0`, and `latest`. No manual
+Docker build or `docker push` step is needed; nothing is published if
+validation fails.
+
 ## Reverse proxy & HTTPS
 
 `docker compose up` exposes the web app on `WEB_PORT` (default `3000`) on the
@@ -182,26 +236,84 @@ To restore (this replaces all current data):
 
 Consider scheduling `./scripts/backup.sh` with cron for unattended backups.
 
-## Upgrading
+## Updating CarWatch
+
+For a backup-then-update habit, run `./scripts/backup.sh` first (see
+[Backups & restore](#backups--restore) above) — cheap insurance before any
+upgrade.
+
+**Running `latest`** (the default): pull the newest published images and
+recreate the containers.
 
 ```bash
-git pull
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
-Migrations run automatically on every `up` (the one-off `migrate` service runs
-`prisma migrate deploy`, never `prisma db push`, before web/worker start), so
-this is safe to run repeatedly. Verify afterward:
+**Pinned to a specific version:** edit `.env`, e.g.
 
 ```bash
-docker compose ps      # web, worker, postgres, redis all healthy
-docker compose logs -f web worker   # Ctrl+C to stop following
+CARWATCH_VERSION=0.4.0
 ```
+
+then the same two commands:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+`docker compose pull` only fetches the tag currently set in `.env`, so pinning
+also controls what gets downloaded, not just what runs.
+
+Either way, migrations are applied automatically: the one-off `migrate`
+service runs `prisma migrate deploy` (never `prisma db push`) against the new
+image before `web`/`worker` are (re)started, so upgrading never leaves the app
+running against a schema it doesn't match. Its output is visible in
+`docker compose logs migrate`, and if it fails, `web`/`worker` never start
+(they wait on `migrate` exiting 0) — the failure is loud, not silent. You
+never need to exec into a container or run a Prisma command by hand for a
+normal update.
+
+Verify afterward:
+
+```bash
+docker compose ps                        # web, worker, postgres, redis all healthy
+docker compose logs --tail=100 web
+docker compose logs --tail=100 worker
+```
+
+## Rollback
+
+Same mechanism as updating, in reverse: set `CARWATCH_VERSION` in `.env` back
+to a previous release, then pull and recreate.
+
+```bash
+# .env
+CARWATCH_VERSION=0.3.1
+```
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+**This rolls back the application code, not the database.** Prisma migrations
+already applied by a newer version are not automatically reversed — rolling
+back the images does not undo a schema change. If the version you're rolling
+back from added a migration the older code doesn't understand, the older code
+may error out against the newer schema. For a patch/minor rollback with no
+schema changes in between, this is normally safe; for anything that crossed a
+migration, restore the database backup you took before upgrading (see
+[Backups & restore](#backups--restore)) rather than assuming the rollback
+alone fixes it. **Always take a backup before a major upgrade** so a rollback
+has something safe to fall back to.
 
 ## Useful commands
 
 ```bash
-docker compose up -d --build   # start (or update) the stack
+docker compose pull             # download the currently-configured image versions
+docker compose up -d            # start (or apply a pulled update to) the stack
 docker compose down            # stop everything, keep data
 docker compose ps              # status + health of each service
 docker compose logs -f         # follow logs (add a service name to filter)
@@ -213,7 +325,9 @@ docker compose restart worker  # restart just the worker
 An optional `Makefile` wraps the same commands (`make up`, `make down`,
 `make logs`, `make status`, `make update`, `make backup`) if you prefer that —
 everything is also reachable through plain `docker compose`/scripts, no
-functionality is Makefile-only.
+functionality is Makefile-only. `make up`/`make update` pull from GHCR just
+like the plain commands above; `make dev` builds from source instead (see
+[Building from source](#building-from-source-development)).
 
 ## Troubleshooting
 
@@ -222,7 +336,7 @@ Check `docker compose ps` — every service should show `healthy` (postgres/redi
 or have exited 0 (the one-off `migrate` service, after it finishes). If `web`
 is unhealthy or restarting, check `docker compose logs web`. Make sure nothing
 else on the host is already using `WEB_PORT` (default 3000); change `WEB_PORT`
-in `.env` and re-run `docker compose up -d` if so.
+in `.env` and run `docker compose up -d` again if so.
 
 **Database connection failed / web or worker keep restarting.**
 Almost always a missing or mismatched `POSTGRES_PASSWORD`. Confirm `.env` has a
@@ -256,12 +370,24 @@ error. For Discord, re-copy the webhook URL from the Discord channel's
 Integrations settings — a regenerated or deleted webhook is the most common
 cause.
 
-## Local development (without Docker)
+**`docker compose pull` fails with "denied" or "unauthorized".**
+The GHCR packages haven't been made public yet — see
+[Image visibility](#image-visibility) above. This is a one-time step for the
+repository owner; once done, pulling never needs authentication again.
+
+## Building from source (development)
+
+**Not required for a normal install.** Everything above (`docker compose
+pull && docker compose up -d`) runs prebuilt images — nothing here is needed
+to deploy CarWatch. This section is for developing CarWatch itself.
+
+### Fastest loop: run web/worker directly with pnpm
 
 Requires Node 22+, a local PostgreSQL 16 and Redis, and Corepack enabled
 (`corepack enable`) so your `pnpm` resolves to the exact version this repo
 pins via `"packageManager"` in `package.json` — the same version Docker and
-any CI use, so lockfile/supply-chain behavior can't drift between them.
+the GHCR-publishing workflow use, so lockfile/supply-chain behavior can't
+drift between them.
 
 ```bash
 pnpm install
@@ -286,6 +412,21 @@ listings and an admin account (override with `SEED_ADMIN_EMAIL` /
 path instead runs `pnpm db:seed:essential`, which only ensures the provider
 catalog, feature list, and default settings exist — real accounts are created
 through the in-app setup screen, never seeded with a default password.
+
+### Exercising the Docker path itself
+
+To build and run CarWatch's actual Dockerfiles locally — e.g. to test a
+Dockerfile change before it's published — use the dev compose override
+instead of the production file, which pulls from GHCR:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+This builds `apps/web/Dockerfile` and `apps/worker/Dockerfile` from your
+working tree and runs them the same way production does (same environment
+variables, health checks, and migration step), without touching GHCR at all.
+`make dev` is a shortcut for the same command; `make dev-down` tears it down.
 
 ## Tests
 

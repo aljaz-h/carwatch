@@ -11,7 +11,7 @@ import { startWorkers } from "./workers";
 const CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000; // every 6 hours
 
 async function main() {
-  logger.info("CarWatch worker starting", { nodeEnv: env.nodeEnv });
+  logger.info("CarWatch worker starting", { nodeEnv: env.nodeEnv, version: env.version, gitSha: env.gitSha });
 
   const connection = createRedisConnection();
   const queues = createQueues(connection);

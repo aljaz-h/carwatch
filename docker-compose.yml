@@ -1,5 +1,17 @@
 name: carwatch
 
+# Production configuration: pulls prebuilt CarWatch images published to
+# GHCR by .github/workflows/docker-publish.yml — nothing is compiled on the
+# host. `docker compose pull && docker compose up -d` is the whole install.
+#
+# Both `web` and `worker` are pinned to one shared CARWATCH_VERSION (see
+# .env.example) so they can never run mismatched releases against each
+# other. Leave it at `latest` to always run the newest published build, or
+# pin it to an exact release (e.g. `CARWATCH_VERSION=0.3.1`) for controlled
+# upgrades — see the README's Updating/Rollback sections.
+#
+# For local development from source instead, see docker-compose.dev.yml.
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -31,10 +43,13 @@ services:
       retries: 10
     # Not published to the host, same reasoning as postgres above.
 
+  # One-off job: applies pending Prisma migrations (`prisma migrate deploy`,
+  # never `db push`) and ensures the provider/feature catalog exists, then
+  # exits. web/worker both wait on it via `service_completed_successfully`,
+  # so the app never starts against a schema it doesn't match, and nothing
+  # else runs migrations concurrently with it.
   migrate:
-    build:
-      context: .
-      dockerfile: apps/worker/Dockerfile
+    image: ghcr.io/aljaz-h/carwatch-worker:${CARWATCH_VERSION:-latest}
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-carwatch}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-carwatch}?schema=public
       AVTONET_ENABLED: ${AVTONET_ENABLED:-true}
@@ -46,9 +61,7 @@ services:
         condition: service_healthy
 
   web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
+    image: ghcr.io/aljaz-h/carwatch-web:${CARWATCH_VERSION:-latest}
     restart: unless-stopped
     init: true
     environment:
@@ -66,9 +79,7 @@ services:
         condition: service_completed_successfully
 
   worker:
-    build:
-      context: .
-      dockerfile: apps/worker/Dockerfile
+    image: ghcr.io/aljaz-h/carwatch-worker:${CARWATCH_VERSION:-latest}
     restart: unless-stopped
     init: true
     environment:
@@ -94,6 +105,9 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    # No public port: the worker has no HTTP surface. Its health is the
+    # HEALTHCHECK baked into the image (heartbeat-file freshness), visible
+    # via `docker compose ps`.
 
 volumes:
   postgres-data:

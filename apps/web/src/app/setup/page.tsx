@@ -3,6 +3,13 @@ import { redirect } from "next/navigation";
 import { hasAnyUser } from "@/lib/auth";
 import { SetupForm } from "./setup-form";
 
+// hasAnyUser() below reads live database state and must never be answered
+// from a build-time snapshot — unlike "/" and "/login", this page never
+// calls a cookie-reading API, so without this Next.js has no signal to
+// avoid statically prerendering it (and would otherwise cache whatever
+// hasAnyUser() returned at build time, before any account exists).
+export const dynamic = "force-dynamic";
+
 export default async function SetupPage() {
   // Once an account exists, this route is effectively disabled — it always
   // bounces to /login, so it can never be used to create a second admin.

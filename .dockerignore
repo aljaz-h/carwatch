@@ -1,10 +1,36 @@
+# Version control and CI metadata — not needed inside the build context.
+.git
+.github
+
+# Dependencies — installed fresh inside each Dockerfile's own build stage.
 **/node_modules
+
+# Build output — regenerated inside each Dockerfile's own build stage.
 **/.next
 **/dist
 **/.turbo
-.git
+
+# Test/coverage output.
+**/coverage
 **/*.log
+
+# Environment files — secrets must never be baked into an image. Every
+# Dockerfile in this repo reads config from runtime env vars / docker-compose,
+# never from a copied .env file, so none of these should ever be COPYable.
+.env
+.env.*
 **/.env
-**/.env.local
+**/.env.*
+!**/.env.example
+
+# Local runtime data and backups (bind-mounted or gitignored; never part of
+# a built image).
 postgres-data
 redis-data
+backups
+
+# Editor and OS cruft.
+.vscode
+.idea
+*.swp
+.DS_Store

@@ -1,6 +1,7 @@
 import { prisma } from "@carwatch/database";
 import { getCurrentUser } from "@/lib/auth";
 import { queueClients } from "@/lib/queue-client";
+import { getAppVersion } from "@/lib/version";
 
 export const dynamic = "force-dynamic";
 
@@ -19,13 +20,15 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const deep = url.searchParams.get("deep") === "1";
 
+  const { version, gitSha } = getAppVersion();
+
   if (!deep) {
-    return Response.json({ status: "ok" });
+    return Response.json({ status: "ok", version });
   }
 
   const user = await getCurrentUser();
   if (!user) {
-    return Response.json({ status: "ok" });
+    return Response.json({ status: "ok", version });
   }
 
   const [database, redis] = await Promise.all([
@@ -40,5 +43,10 @@ export async function GET(request: Request) {
   ]);
 
   const status = database && redis ? "ok" : "degraded";
-  return Response.json({ status, dependencies: { database: database ? "ok" : "error", redis: redis ? "ok" : "error" } });
+  return Response.json({
+    status,
+    version,
+    gitSha,
+    dependencies: { database: database ? "ok" : "error", redis: redis ? "ok" : "error" },
+  });
 }

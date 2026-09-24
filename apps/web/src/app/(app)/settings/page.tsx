@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { AboutPanel } from "@/components/settings/about-panel";
 import { AccountPanel } from "@/components/settings/account-panel";
 import { GeneralPanel } from "@/components/settings/general-panel";
 import { NotificationChannelsPanel } from "@/components/settings/notification-channels-panel";
@@ -7,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getProviderDiagnostics } from "@/lib/provider-diagnostics";
+import { getAppVersion } from "@/lib/version";
 
 interface GeneralSettings {
   siteName: string;
@@ -56,7 +58,10 @@ export default async function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="general">
-          <GeneralPanel initial={general} />
+          <div className="flex flex-col gap-5">
+            <GeneralPanel initial={general} />
+            <AboutPanel {...getAppVersion()} />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

@@ -1,4 +1,11 @@
 FROM node:22-slim AS base
+# CMD below runs `pnpm exec tsx` as the non-root `worker` user, which would
+# otherwise make corepack try to fetch/cache the pinned pnpm version into
+# that user's (nonexistent/unwritable) home directory on every container
+# start. Pointing corepack at a shared, writable cache under /app instead
+# means the pnpm binary root already downloaded during `deps` below is
+# reused at runtime — no permission error, no network fetch on startup.
+ENV COREPACK_HOME=/app/.corepack
 RUN corepack enable
 WORKDIR /app
 
@@ -14,15 +21,29 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 FROM deps AS runner
 ENV NODE_ENV=production
 ENV HEARTBEAT_FILE=/tmp/carwatch-worker-heartbeat
+
+# Set by the GHCR-publishing workflow; default to values that make an
+# unreleased/local build obvious (see apps/worker/src/env.ts).
+ARG CARWATCH_VERSION=development
+ARG CARWATCH_GIT_SHA=unknown
+ENV CARWATCH_VERSION=$CARWATCH_VERSION
+ENV CARWATCH_GIT_SHA=$CARWATCH_GIT_SHA
+
 RUN groupadd --system --gid 1001 carwatch && useradd --system --uid 1001 --gid carwatch worker
 
-COPY --chown=worker:carwatch pnpm-workspace.yaml package.json ./
-COPY --chown=worker:carwatch packages/database packages/database
-COPY --chown=worker:carwatch packages/shared packages/shared
-COPY --chown=worker:carwatch packages/providers packages/providers
-COPY --chown=worker:carwatch packages/notifications packages/notifications
-COPY --chown=worker:carwatch apps/worker apps/worker
+COPY tsconfig.base.json ./
+COPY packages/database packages/database
+COPY packages/shared packages/shared
+COPY packages/providers packages/providers
+COPY packages/notifications packages/notifications
+COPY apps/worker apps/worker
 RUN pnpm --filter @carwatch/database generate
+
+# Hand the whole app directory over to the user CMD actually runs as: the
+# source just copied in, but also node_modules and the pnpm/corepack cache
+# populated as root above (during `deps` and the `generate` step) — `pnpm
+# exec` at runtime touches all three, not just the source.
+RUN chown -R worker:carwatch /app
 
 USER worker
 WORKDIR /app/apps/worker
