@@ -4,7 +4,12 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { normalizeAvtoNetListing } from "../src/providers/avto-net/map-normalize.js";
 import { parseDetailPage } from "../src/providers/avto-net/parse-detail.js";
-import { hasExpectedSearchStructure, hasNextSearchPage, parseSearchPage } from "../src/providers/avto-net/parse-search.js";
+import {
+  describeUnexpectedPage,
+  hasExpectedSearchStructure,
+  hasNextSearchPage,
+  parseSearchPage,
+} from "../src/providers/avto-net/parse-search.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = join(__dirname, "fixtures", "avto-net");
@@ -46,6 +51,19 @@ describe("avto.net hasExpectedSearchStructure (parser-health guard)", () => {
 
   it("is false when the results container is missing entirely (site markup changed)", () => {
     expect(hasExpectedSearchStructure(loadFixture("search-page-changed-markup.html"))).toBe(false);
+  });
+});
+
+describe("avto.net describeUnexpectedPage", () => {
+  it("captures the page title and a text excerpt for diagnostics", () => {
+    const description = describeUnexpectedPage(loadFixture("search-page-changed-markup.html"));
+    expect(description).toContain("title=");
+    expect(description).toContain("excerpt=");
+  });
+
+  it("never throws on malformed or empty HTML", () => {
+    expect(() => describeUnexpectedPage("")).not.toThrow();
+    expect(() => describeUnexpectedPage("<not-even-html")).not.toThrow();
   });
 });
 

@@ -5,7 +5,7 @@ import { RateLimiter } from "../../http/rate-limiter";
 import type { HealthCheckResult, Provider, RawListingPayload, SearchOptions, SearchResultItem } from "../../types";
 import { normalizeAvtoNetListing } from "./map-normalize";
 import { parseDetailPage, type AvtoNetRawDetail } from "./parse-detail";
-import { hasExpectedSearchStructure, hasNextSearchPage, parseSearchPage } from "./parse-search";
+import { describeUnexpectedPage, hasExpectedSearchStructure, hasNextSearchPage, parseSearchPage } from "./parse-search";
 
 const BASE_URL = "https://www.avto.net";
 const SEARCH_PATH = "/Ads/results.asp";
@@ -29,7 +29,7 @@ export class AvtoNetProvider implements Provider {
 
       if (page === 1 && !hasExpectedSearchStructure(html)) {
         throw new ParserStructureError(
-          "Avto.net search results page did not contain the expected results container.",
+          `Avto.net search results page did not contain the expected results container. ${describeUnexpectedPage(html)}`,
           ".GO-Results",
           url,
         );

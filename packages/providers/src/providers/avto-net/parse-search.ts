@@ -54,3 +54,18 @@ export function hasExpectedSearchStructure(html: string): boolean {
   const $ = cheerio.load(html);
   return $(".GO-Results").length > 0;
 }
+
+/**
+ * A short, human-readable summary of a page that failed
+ * `hasExpectedSearchStructure` — the page's `<title>` and a snippet of its
+ * visible text — attached to `ParserStructureError.message` so it shows up
+ * in the run's "Advanced details". Without this, the failure just says
+ * "the container wasn't found" with no way to tell a cookie-consent wall,
+ * a CAPTCHA/interstitial, or a genuine markup change apart after the fact.
+ */
+export function describeUnexpectedPage(html: string): string {
+  const $ = cheerio.load(html);
+  const title = $("title").text().trim().replace(/\s+/g, " ").slice(0, 100);
+  const bodyText = $("body").text().trim().replace(/\s+/g, " ").slice(0, 200);
+  return `title="${title || "(none)"}" excerpt="${bodyText || "(empty)"}"`;
+}
