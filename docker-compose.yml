@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-carwatch}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-carwatch}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — copy .env.example to .env and set it}
       POSTGRES_DB: ${POSTGRES_DB:-carwatch}
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -15,8 +15,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    ports:
-      - "127.0.0.1:5432:5432"
+    # Not published to the host: only the web/worker/migrate containers on
+    # the internal Docker network can reach Postgres. Use
+    # `docker compose exec postgres psql -U <user> <db>` to inspect it.
 
   redis:
     image: redis:7-alpine
@@ -28,19 +29,18 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    ports:
-      - "127.0.0.1:6379:6379"
+    # Not published to the host, same reasoning as postgres above.
 
   migrate:
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-carwatch}:${POSTGRES_PASSWORD:-carwatch}@postgres:5432/${POSTGRES_DB:-carwatch}?schema=public
-      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@example.com}
-      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-changeme123}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-carwatch}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-carwatch}?schema=public
+      AVTONET_ENABLED: ${AVTONET_ENABLED:-true}
+      AVTONET_INTERVAL_MINUTES: ${AVTONET_INTERVAL_MINUTES:-45}
     working_dir: /app/packages/database
-    command: sh -c "pnpm exec prisma migrate deploy && pnpm exec tsx src/seed.ts"
+    command: sh -c "pnpm exec prisma migrate deploy && pnpm exec tsx src/seed-essential.ts"
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,13 +50,17 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
+    init: true
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-carwatch}:${POSTGRES_PASSWORD:-carwatch}@postgres:5432/${POSTGRES_DB:-carwatch}?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-carwatch}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-carwatch}?schema=public
+      REDIS_URL: redis://redis:6379
     ports:
       - "${WEB_PORT:-3000}:3000"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
@@ -66,9 +70,10 @@ services:
       context: .
       dockerfile: apps/worker/Dockerfile
     restart: unless-stopped
+    init: true
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-carwatch}:${POSTGRES_PASSWORD:-carwatch}@postgres:5432/${POSTGRES_DB:-carwatch}?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-carwatch}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-carwatch}?schema=public
       REDIS_URL: redis://redis:6379
       WEB_BASE_URL: ${WEB_BASE_URL:-http://localhost:3000}
       SMTP_HOST: ${SMTP_HOST:-}
@@ -80,6 +85,8 @@ services:
       SCRAPE_CONCURRENCY: ${SCRAPE_CONCURRENCY:-2}
       MATCH_CONCURRENCY: ${MATCH_CONCURRENCY:-5}
       ALERT_CONCURRENCY: ${ALERT_CONCURRENCY:-5}
+      SCHEDULER_RECONCILE_MINUTES: ${SCHEDULER_RECONCILE_MINUTES:-5}
+      PROVIDER_RUN_RETENTION_DAYS: ${PROVIDER_RUN_RETENTION_DAYS:-30}
     depends_on:
       postgres:
         condition: service_healthy

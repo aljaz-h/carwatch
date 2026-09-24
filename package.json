@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Self-hosted used-car listing aggregator and monitoring platform",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "dev:web": "pnpm --filter @carwatch/web dev",
@@ -16,6 +16,7 @@
     "db:push": "pnpm --filter @carwatch/database push",
     "db:migrate": "pnpm --filter @carwatch/database migrate",
     "db:seed": "pnpm --filter @carwatch/database seed",
+    "db:seed:essential": "pnpm --filter @carwatch/database seed:essential",
     "prepare": "true"
   },
   "devDependencies": {

@@ -17,14 +17,22 @@ COPY . .
 RUN pnpm --filter @carwatch/database generate
 RUN pnpm --filter @carwatch/web build
 
+# Minimal production runtime: only the files Next.js standalone output
+# traced as actually required, not the full workspace or dev deps.
 FROM base AS runner
 ENV NODE_ENV=production
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
-COPY --from=build /app/packages ./packages
-COPY --from=build /app/apps/web ./apps/web
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+RUN groupadd --system --gid 1001 carwatch && useradd --system --uid 1001 --gid carwatch webapp
 
-WORKDIR /app/apps/web
+COPY --from=build --chown=webapp:carwatch /app/apps/web/.next/standalone ./
+COPY --from=build --chown=webapp:carwatch /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build --chown=webapp:carwatch /app/apps/web/public ./apps/web/public
+
+USER webapp
 EXPOSE 3000
-CMD ["pnpm", "exec", "next", "start", "-p", "3000"]
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+
+CMD ["node", "apps/web/server.js"]
