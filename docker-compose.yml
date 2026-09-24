@@ -1,0 +1,93 @@
+name: carwatch
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-carwatch}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-carwatch}
+      POSTGRES_DB: ${POSTGRES_DB:-carwatch}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-carwatch}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-carwatch}:${POSTGRES_PASSWORD:-carwatch}@postgres:5432/${POSTGRES_DB:-carwatch}?schema=public
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@example.com}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-changeme123}
+    working_dir: /app/packages/database
+    command: sh -c "pnpm exec prisma migrate deploy && pnpm exec tsx src/seed.ts"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-carwatch}:${POSTGRES_PASSWORD:-carwatch}@postgres:5432/${POSTGRES_DB:-carwatch}?schema=public
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-carwatch}:${POSTGRES_PASSWORD:-carwatch}@postgres:5432/${POSTGRES_DB:-carwatch}?schema=public
+      REDIS_URL: redis://redis:6379
+      WEB_BASE_URL: ${WEB_BASE_URL:-http://localhost:3000}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-CarWatch <no-reply@carwatch.local>}
+      SCRAPE_CONCURRENCY: ${SCRAPE_CONCURRENCY:-2}
+      MATCH_CONCURRENCY: ${MATCH_CONCURRENCY:-5}
+      ALERT_CONCURRENCY: ${ALERT_CONCURRENCY:-5}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-data:
+  redis-data:
